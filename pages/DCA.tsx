@@ -65,13 +65,13 @@ interface DCAPlan {
 
 export default function DCA() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab') || 'REAL';
-  const [activeTab, setActiveTab] = useState<'REAL' | 'BACKTEST'>(tabParam as 'REAL' | 'BACKTEST');
+  const tabParam = searchParams.get('tab') || 'DEMO';
+  const [activeTab, setActiveTab] = useState<'DEMO' | 'REAL' | 'BACKTEST'>(tabParam as 'DEMO' | 'REAL' | 'BACKTEST');
 
   // Sync with URL params
   useEffect(() => {
-    const tab = searchParams.get('tab') || 'REAL';
-    if (tab === 'REAL' || tab === 'BACKTEST') {
+    const tab = searchParams.get('tab') || 'DEMO';
+    if (tab === 'DEMO' || tab === 'REAL' || tab === 'BACKTEST') {
       setActiveTab(tab);
     }
   }, [searchParams]);
@@ -92,6 +92,10 @@ export default function DCA() {
   const [showSecret, setShowSecret] = useState(false);
   const [realBalance, setRealBalance] = useState(0); 
   const [realPlans, setRealPlans] = useState<DCAPlan[]>([]);
+
+  // DEMO States
+  const [demoBalance, setDemoBalance] = useState(10000);
+  const [demoPlans, setDemoPlans] = useState<DCAPlan[]>([]);
 
   // Backtest & UI States
   const [isCalculating, setIsCalculating] = useState(false);
@@ -314,6 +318,37 @@ export default function DCA() {
         </div>
       </div>
 
+      {/* TABS */}
+      <div className="flex p-1 bg-gray-900 rounded-lg mb-6 border border-gray-700">
+        <button
+          onClick={() => {
+            setActiveTab('DEMO');
+            setSearchParams({ tab: 'DEMO' });
+          }}
+          className={`flex-1 py-2 text-xs font-bold rounded transition-all ${activeTab === 'DEMO' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+        >
+          🟣 DEMO
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('REAL');
+            setSearchParams({ tab: 'REAL' });
+          }}
+          className={`flex-1 py-2 text-xs font-bold rounded transition-all ${activeTab === 'REAL' ? 'bg-green-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+        >
+          🟢 REAL
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('BACKTEST');
+            setSearchParams({ tab: 'BACKTEST' });
+          }}
+          className={`flex-1 py-2 text-xs font-bold rounded transition-all ${activeTab === 'BACKTEST' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+        >
+          🔵 BACKTEST
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 md:gap-6 max-w-7xl mx-auto">
         
         {/* --- LEFT: SETTINGS PANEL --- */}
@@ -438,6 +473,145 @@ export default function DCA() {
         {/* --- RIGHT: DISPLAY PANEL --- */}
         <div className="lg:col-span-2 space-y-4 md:space-y-6 px-0 md:px-0">
           
+          {/* VIEW DEMO PLAN LIST */}
+          {activeTab === 'DEMO' && (
+            <div className="bg-gray-900 md:bg-gray-800 md:border border-gray-800 md:rounded-xl p-4 md:p-6 shadow-none md:shadow-lg min-h-[400px]">
+               <div className="flex justify-between items-center mb-6 px-2 md:px-0">
+                 <h2 className="text-lg md:text-xl font-bold flex items-center gap-2 text-purple-400">
+                   <FaRobot/> Danh sách Plan DEMO
+                 </h2>
+                 <span className="text-xs bg-purple-900/30 text-purple-300 px-2 py-1 rounded border border-purple-800">
+                   Demo Balance: {formatMoney(demoBalance)}
+                 </span>
+               </div>
+
+               <div className="space-y-3">
+                 {demoPlans.map((plan) => (
+                   <div key={plan.id} className="bg-gray-800 md:bg-gray-700/20 border border-gray-700 md:border-gray-600 rounded-xl overflow-hidden shadow-sm">
+                      <div className="p-4 flex flex-col gap-4">
+                        <div className="flex items-center justify-between">
+                           <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow-sm bg-purple-900 text-purple-400">
+                                {plan.symbol.substring(0,3)}
+                              </div>
+                              <div>
+                                 <div className="flex items-center gap-2">
+                                    <span className="font-bold text-white">{plan.symbol}</span>
+                                    <span className="text-[10px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">{plan.frequency}</span>
+                                 </div>
+                                 <div className="text-xs text-gray-400 mt-0.5">
+                                    <span className="text-white font-bold">{plan.amount}$</span> / lần
+                                 </div>
+                              </div>
+                           </div>
+                           <button 
+                             onClick={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                             className="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg flex items-center gap-1 border border-gray-600 transition"
+                           >
+                             <FaList/> Chi tiết
+                           </button>
+                        </div>
+                        <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
+                           <div>
+                              <p className="text-[10px] text-gray-500 uppercase font-bold">Đã đầu tư</p>
+                              <p className="text-sm text-white font-bold font-mono">{formatMoney(plan.totalInvested)}</p>
+                           </div>
+                           <div className="flex gap-2">
+                             <button onClick={() => {
+                               const currentPrice = 95000 + Math.random() * 2000;
+                               const newTx = {
+                                 id: Date.now(),
+                                 date: new Date().toLocaleString(),
+                                 price: currentPrice,
+                                 amountUsdt: amount,
+                                 amountCoin: amount / currentPrice,
+                                 status: 'SUCCESS' as const
+                               };
+                               setDemoBalance(prev => prev - amount);
+                               setDemoPlans(plans => plans.map(p => p.id === plan.id ? {
+                                 ...p,
+                                 totalInvested: p.totalInvested + amount,
+                                 currentValue: p.currentValue + amount,
+                                 transactions: [newTx, ...p.transactions]
+                               } : p));
+                             }} className="text-[10px] bg-gray-800 border border-gray-600 px-3 py-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-700 transition">Test</button>
+                             <button className="text-[10px] bg-red-900/20 border border-red-800 px-3 py-1.5 rounded-full text-red-400 hover:bg-red-900/40"><FaTrash/></button>
+                           </div>
+                        </div>
+                      </div>
+
+                      {expandedPlanId === plan.id && (
+                        <div className="bg-gray-950/50 border-t border-gray-700 p-4">
+                           <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">
+                             Lịch sử giao dịch
+                           </h4>
+                           {plan.transactions.length === 0 ? (
+                             <p className="text-center text-xs text-gray-500 italic py-4 border border-dashed border-gray-800 rounded">Chưa có giao dịch nào.</p>
+                           ) : (
+                             <div className="overflow-x-auto">
+                               <table className="w-full text-left text-xs whitespace-nowrap">
+                                 <thead className="text-gray-500 border-b border-gray-800">
+                                   <tr>
+                                     <th className="py-2 pl-2">Time</th>
+                                     <th className="py-2">Price</th>
+                                     <th className="py-2">Amount</th>
+                                     <th className="py-2 text-right pr-2">Total</th>
+                                   </tr>
+                                 </thead>
+                                 <tbody className="text-gray-300 divide-y divide-gray-800">
+                                   {plan.transactions.map(tx => (
+                                     <tr key={tx.id}>
+                                       <td className="py-2 pl-2 text-gray-500">{tx.date.split(',')[1]}</td>
+                                       <td className="py-2 font-mono text-accent-yellow">${tx.price.toFixed(0)}</td>
+                                       <td className="py-2 font-mono">{tx.amountCoin.toFixed(5)}</td>
+                                       <td className="py-2 font-mono font-bold text-right pr-2">{formatMoney(tx.amountUsdt)}</td>
+                                     </tr>
+                                   ))}
+                                 </tbody>
+                               </table>
+                             </div>
+                           )}
+                        </div>
+                      )}
+                   </div>
+                 ))}
+
+                 {demoPlans.length === 0 && (
+                   <div className="text-center py-12 bg-gray-900/50 rounded-xl border-2 border-dashed border-gray-700 mx-4 md:mx-0">
+                     <FaRobot className="text-4xl text-gray-600 mx-auto mb-3"/>
+                     <p className="text-gray-400 text-sm">Chưa có kế hoạch DEMO nào.</p>
+                     <button 
+                        onClick={() => {
+                          let timeDetail = "";
+                          if (frequency === 'DAILY') timeDetail = `${targetHour}:00 hàng ngày`;
+                          if (frequency === 'WEEKLY') timeDetail = `Thứ ${targetWeekday === 0 ? 'CN' : targetWeekday + 1}, ${targetHour}:00`;
+                          if (frequency === 'MONTHLY') timeDetail = `Ngày ${targetDate}, ${targetHour}:00`;
+
+                          const newPlan = {
+                            id: Date.now(),
+                            symbol: coin,
+                            amount,
+                            frequency,
+                            detailTime: timeDetail,
+                            nextRun: "2025-02-01 07:00",
+                            status: 'RUNNING' as const,
+                            accountName: 'Demo Account',
+                            totalInvested: 0,
+                            currentValue: 0,
+                            transactions: []
+                          };
+                          setDemoPlans([newPlan, ...demoPlans]);
+                        }}
+                        className="mt-4 text-xs bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg transition"
+                     >
+                       Tạo Plan DEMO
+                     </button>
+                   </div>
+                 )}
+               </div>
+            </div>
+          )}
+
           {/* VIEW 1: PLAN LIST */}
           {activeTab === 'REAL' && (
             <div className="bg-gray-900 md:bg-gray-800 md:border border-gray-800 md:rounded-xl p-4 md:p-6 shadow-none md:shadow-lg min-h-[400px]">

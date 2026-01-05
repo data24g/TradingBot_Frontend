@@ -90,12 +90,25 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               <div className="ml-8 mt-1 space-y-1">
                 <button
                   onClick={() => {
+                    navigate('/dca?tab=DEMO');
+                    setIsOpen(false);
+                  }}
+                  className={`w-full flex items-center p-2 text-xs rounded-lg transition-colors ${
+                    location.search.includes('tab=DEMO')
+                      ? 'text-purple-400 font-semibold border-l-2 border-purple-400 bg-gray-700/30'
+                      : 'text-gray-500 hover:bg-gray-700/50 hover:text-gray-300'
+                  }`}
+                >
+                  Plan DEMO
+                </button>
+                <button
+                  onClick={() => {
                     navigate('/dca?tab=REAL');
                     setIsOpen(false);
                   }}
                   className={`w-full flex items-center p-2 text-xs rounded-lg transition-colors ${
-                    (location.search.includes('tab=REAL') || !location.search)
-                      ? 'bg-green-600/20 text-green-400 font-semibold border-l-2 border-green-400'
+                    location.search.includes('tab=REAL')
+                      ? 'text-green-400 font-semibold border-l-2 border-green-400 bg-gray-700/30'
                       : 'text-gray-500 hover:bg-gray-700/50 hover:text-gray-300'
                   }`}
                 >
@@ -108,7 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
                   }}
                   className={`w-full flex items-center p-2 text-xs rounded-lg transition-colors ${
                     location.search.includes('tab=BACKTEST')
-                      ? 'bg-yellow-600/20 text-accent-yellow font-semibold border-l-2 border-accent-yellow'
+                      ? 'text-blue-400 font-semibold border-l-2 border-blue-400 bg-gray-700/30'
                       : 'text-gray-500 hover:bg-gray-700/50 hover:text-gray-300'
                   }`}
                 >
