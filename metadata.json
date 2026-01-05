@@ -1,0 +1,5 @@
+{
+  "name": "Trading Bot Dashboard",
+  "description": "A web application to manage multiple user trading accounts, track trade history with advanced filtering, and monitor cryptocurrency market data including support, resistance, and future prices.",
+  "requestFramePermissions": []
+}
