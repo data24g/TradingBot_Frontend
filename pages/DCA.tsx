@@ -96,6 +96,7 @@ export default function DCA() {
   // DEMO States
   const [demoBalance, setDemoBalance] = useState(10000);
   const [demoPlans, setDemoPlans] = useState<DCAPlan[]>([]);
+  const [loadingDemoPlans, setLoadingDemoPlans] = useState(false);
 
   // Backtest & UI States
   const [isCalculating, setIsCalculating] = useState(false);
@@ -123,6 +124,41 @@ export default function DCA() {
       setDemoBalance(parseFloat(savedDemoBalance));
     }
   }, []);
+
+  // Load Demo Plans from Database when tab is DEMO
+  useEffect(() => {
+    if (activeTab === 'DEMO') {
+      const loadDemoPlansFromDB = async () => {
+        setLoadingDemoPlans(true);
+        try {
+          const userId = localStorage.getItem('userId') || 'demo_user';
+          const res = await axios.get(`/api/dca/demo/plans/${userId}`);
+          if (res.data && res.data.length > 0) {
+            // Convert database plans to frontend format
+            const dbPlans: DCAPlan[] = res.data.map((p: any) => ({
+              id: p.id,
+              symbol: p.symbol,
+              amount: p.amountUSD,
+              frequency: p.recurrence,
+              detailTime: '',
+              nextRun: p.nextRun,
+              status: p.active ? 'RUNNING' : 'PAUSED',
+              accountName: 'Database Plan',
+              totalInvested: p.totalInvested || 0,
+              currentValue: p.currentValue || 0,
+              transactions: []
+            }));
+            setDemoPlans(dbPlans);
+          }
+        } catch (err) {
+          console.error('Failed to load demo plans from database', err);
+        } finally {
+          setLoadingDemoPlans(false);
+        }
+      };
+      loadDemoPlansFromDB();
+    }
+  }, [activeTab]);
 
   // Save to localStorage on change
   useEffect(() => {
@@ -482,16 +518,76 @@ export default function DCA() {
             )}
 
             {/* ACTION BUTTON */}
-            <div className="pt-2 pb-4 md:pb-0">
+            <div className="pt-2 pb-4 md:pb-0 space-y-2">
               {activeTab === 'BACKTEST' ? (
                 <button onClick={runBacktest} disabled={isCalculating} className="w-full py-4 bg-accent-yellow hover:bg-yellow-500 text-gray-900 font-bold rounded-xl shadow-lg active:scale-95 transition disabled:opacity-50 flex items-center justify-center gap-2 uppercase tracking-wide text-sm">
                   {isCalculating ? <span className="animate-spin">↻</span> : <FaHistory/>} 
                   {isCalculating ? `Loading ${loadingProgress}%` : 'CHẠY BACKTEST'}
                 </button>
               ) : (
-                <button onClick={handleCreatePlan} className="w-full py-4 font-bold rounded-xl shadow-lg active:scale-95 transition flex items-center justify-center gap-2 text-sm uppercase tracking-wide bg-green-600 hover:bg-green-500 text-white">
-                  <FaCheckCircle/> KÍCH HOẠT LỆNH THẬT
-                </button>
+                <>
+                  {/* Nút tạo DEMO Plan - kết nối với Backend Database */}
+                  <button 
+                    onClick={async () => {
+                      if (!coin || !amount) return alert("Vui lòng chọn Coin và số tiền!");
+                      
+                      let timeDetail = "";
+                      if (frequency === 'DAILY') timeDetail = `${targetHour}:00 hàng ngày`;
+                      if (frequency === 'WEEKLY') timeDetail = `Thứ ${targetWeekday === 0 ? 'CN' : targetWeekday + 1}, ${targetHour}:00`;
+                      if (frequency === 'MONTHLY') timeDetail = `Ngày ${targetDate}, ${targetHour}:00`;
+
+                      const newPlan = {
+                        userId: localStorage.getItem('userId') || 'demo_user',
+                        symbol: `${coin}USDT`,
+                        amountUSD: amount,
+                        side: 'BUY',
+                        recurrence: frequency,
+                        targetHour: targetHour,
+                        targetWeekday: frequency === 'WEEKLY' ? targetWeekday : null,
+                        targetDate: frequency === 'MONTHLY' ? targetDate : null,
+                        active: true
+                      };
+
+                      try {
+                        const res = await axios.post('/api/dca/demo/plan', newPlan);
+                        if (res.data && res.data.id) {
+                          alert("✅ Đã tạo Demo Plan thành công! Dữ liệu đã lưu vào Database.");
+                          // Refresh danh sách
+                          const plansRes = await axios.get(`/api/dca/demo/plans/${newPlan.userId}`);
+                          setDemoPlans(plansRes.data.map((p: any) => ({
+                            id: p.id,
+                            symbol: p.symbol,
+                            amount: p.amountUSD,
+                            frequency: p.recurrence,
+                            detailTime: timeDetail,
+                            nextRun: p.nextRun,
+                            status: p.active ? 'RUNNING' : 'PAUSED',
+                            accountName: 'Database Plan',
+                            totalInvested: p.totalInvested || 0,
+                            currentValue: p.currentValue || 0,
+                            transactions: []
+                          })));
+                          setActiveTab('DEMO');
+                          setSearchParams({ tab: 'DEMO' });
+                        }
+                      } catch (err) {
+                        console.error(err);
+                        alert("❌ Lỗi khi tạo Demo Plan. Vui lòng thử lại!");
+                      }
+                    }}
+                    className="w-full py-3 font-bold rounded-xl shadow-lg active:scale-95 transition flex items-center justify-center gap-2 text-sm uppercase tracking-wide bg-purple-600 hover:bg-purple-500 text-white"
+                  >
+                    <FaRobot/> TẠO DEMO PLAN (Database)
+                  </button>
+
+                  {/* Nút tạo REAL Plan */}
+                  <button 
+                    onClick={handleCreatePlan} 
+                    className="w-full py-3 font-bold rounded-xl shadow-lg active:scale-95 transition flex items-center justify-center gap-2 text-sm uppercase tracking-wide bg-green-600 hover:bg-green-500 text-white"
+                  >
+                    <FaCheckCircle/> KÍCH HOẠT LỆNH THẬT
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -512,7 +608,16 @@ export default function DCA() {
                  </span>
                </div>
 
-               <div className="space-y-3">
+               {/* Loading indicator when fetching from database */}
+               {loadingDemoPlans && (
+                 <div className="text-center py-8">
+                   <span className="animate-spin text-purple-500 text-2xl">↻</span>
+                   <p className="text-gray-500 text-sm mt-2">Đang tải từ Database...</p>
+                 </div>
+               )}
+
+               {!loadingDemoPlans && demoPlans.length > 0 && (
+                <div className="space-y-3">
                  {demoPlans.map((plan) => (
                    <div key={plan.id} className="bg-gray-800 md:bg-gray-700/20 border border-gray-700 md:border-gray-600 rounded-xl overflow-hidden shadow-sm">
                       <div className="p-4 flex flex-col gap-4">
@@ -603,7 +708,7 @@ export default function DCA() {
                    </div>
                  ))}
 
-                 {demoPlans.length === 0 && (
+                 {demoPlans.length === 0 && !loadingDemoPlans && (
                    <div className="text-center py-12 bg-gray-900/50 rounded-xl border-2 border-dashed border-gray-700 mx-4 md:mx-0">
                      <FaRobot className="text-4xl text-gray-600 mx-auto mb-3"/>
                      <p className="text-gray-400 text-sm">Chưa có kế hoạch DEMO nào.</p>
@@ -636,6 +741,7 @@ export default function DCA() {
                    </div>
                  )}
                </div>
+               )}
             </div>
           )}
 
@@ -792,7 +898,6 @@ export default function DCA() {
               )}
             </div>
           )}
-
         </div>
       </div>
     </div>
