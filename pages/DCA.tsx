@@ -106,6 +106,33 @@ export default function DCA() {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
+  // --- LOCALSTORAGE PERSISTENCE FOR DEMO ---
+  // Load from localStorage on mount
+  useEffect(() => {
+    const savedDemoPlans = localStorage.getItem('dca_demo_plans');
+    const savedDemoBalance = localStorage.getItem('dca_demo_balance');
+    
+    if (savedDemoPlans) {
+      try {
+        setDemoPlans(JSON.parse(savedDemoPlans));
+      } catch (e) {
+        console.error('Failed to parse demo plans', e);
+      }
+    }
+    if (savedDemoBalance) {
+      setDemoBalance(parseFloat(savedDemoBalance));
+    }
+  }, []);
+
+  // Save to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('dca_demo_plans', JSON.stringify(demoPlans));
+  }, [demoPlans]);
+
+  useEffect(() => {
+    localStorage.setItem('dca_demo_balance', demoBalance.toString());
+  }, [demoBalance]);
+
   // --- LOGIC HANDLERS ---
   const handleAccountChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const accId = e.target.value;
