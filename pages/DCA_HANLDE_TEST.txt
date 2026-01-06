@@ -1,0 +1,65 @@
+  // --- TEST TRANSACTION HANDLER ---
+  const handleTestTransaction = async (plan: DCAPlan) => {
+    const currentPrice = 95000 + Math.random() * 2000;
+    const newTx = {
+      planId: plan.id,
+      price: currentPrice,
+      amountUSDT: plan.amount,
+      amountCoin: plan.amount / currentPrice,
+      side: 'BUY',
+      date: new Date().toISOString(),
+      status: 'SUCCESS'
+    };
+
+    try {
+      // Save transaction to database
+      await axios.post('/api/dca/demo/transaction', newTx);
+      
+      // Create local transaction for display
+      const txForState: Transaction = {
+        id: Date.now(),
+        date: new Date().toLocaleString(),
+        price: currentPrice,
+        amountUsdt: plan.amount,
+        amountCoin: plan.amount / currentPrice,
+        status: 'SUCCESS'
+      };
+
+      // Refresh plan data from database to get updated totalInvested
+      const planRes = await axios.get(`/api/dca/demo/plan/${plan.id}`);
+      const updatedPlan = planRes.data;
+
+      // Load transactions for this plan
+      let transactions: Transaction[] = [txForState];
+      try {
+        const txRes = await axios.get(`/api/dca/demo/transactions/${plan.id}`);
+        if (txRes.data && txRes.data.length > 0) {
+          transactions = txRes.data.map((t: any) => ({
+            id: t.id,
+            date: t.date,
+            price: t.price,
+            amountUsdt: t.amountUSDT,
+            amountCoin: t.amountCoin,
+            status: t.status as 'SUCCESS' | 'FAILED' | 'PENDING'
+          }));
+        }
+      } catch (txErr) {
+        console.error('Failed to load transactions', txErr);
+      }
+
+      // Update state with fresh data from database
+      setDemoBalance(prev => prev - plan.amount);
+      setDemoPlans(plans => plans.map(p => p.id === plan.id ? {
+        ...p,
+        totalInvested: updatedPlan.totalInvested || (p.totalInvested + plan.amount),
+        currentValue: updatedPlan.currentValue || (p.currentValue + plan.amount),
+        transactions: transactions
+      } : p));
+      
+      alert('✅ Giao dịch demo đã được lưu vào database!');
+    } catch (err) {
+      console.error('Failed to save transaction to database', err);
+      alert('❌ Lỗi khi lưu giao dịch vào database');
+    }
+  };
+
