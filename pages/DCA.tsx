@@ -132,21 +132,41 @@ export default function DCA() {
         setLoadingDemoPlans(true);
         try {
           const userId = localStorage.getItem('userId') || 'demo_user';
-          const res = await axios.get(`/api/dca/demo/plans/${userId}`);
-          if (res.data && res.data.length > 0) {
-            // Convert database plans to frontend format
-            const dbPlans: DCAPlan[] = res.data.map((p: any) => ({
-              id: p.id,
-              symbol: p.symbol,
-              amount: p.amountUSD,
-              frequency: p.recurrence,
-              detailTime: '',
-              nextRun: p.nextRun,
-              status: p.active ? 'RUNNING' : 'PAUSED',
-              accountName: 'Database Plan',
-              totalInvested: p.totalInvested || 0,
-              currentValue: p.currentValue || 0,
-              transactions: []
+          const plansRes = await axios.get(`/api/dca/demo/plans/${userId}`);
+          if (plansRes.data && plansRes.data.length > 0) {
+            // Load all plans and their transactions
+            const dbPlans: DCAPlan[] = await Promise.all(plansRes.data.map(async (p: any) => {
+              // Load transactions for this plan
+              let transactions: Transaction[] = [];
+              try {
+                const txRes = await axios.get(`/api/dca/demo/transactions/${p.id}`);
+                if (txRes.data && txRes.data.length > 0) {
+                  transactions = txRes.data.map((t: any) => ({
+                    id: t.id,
+                    date: t.date,
+                    price: t.price,
+                    amountUsdt: t.amountUSDT,
+                    amountCoin: t.amountCoin,
+                    status: t.status as 'SUCCESS' | 'FAILED' | 'PENDING'
+                  }));
+                }
+              } catch (txErr) {
+                console.error('Failed to load transactions for plan', p.id, txErr);
+              }
+
+              return {
+                id: p.id,
+                symbol: p.symbol,
+                amount: p.amountUSD,
+                frequency: p.recurrence,
+                detailTime: '',
+                nextRun: p.nextRun,
+                status: p.active ? 'RUNNING' : 'PAUSED',
+                accountName: 'Database Plan',
+                totalInvested: p.totalInvested || 0,
+                currentValue: p.currentValue || 0,
+                transactions
+              };
             }));
             setDemoPlans(dbPlans);
           }
@@ -228,6 +248,64 @@ export default function DCA() {
       totalInvested: p.totalInvested + amount,
       currentValue: p.currentValue + amount, // Mock value
       transactions: [newTx, ...p.transactions]
+    } : p));
+  };
+
+  // --- DELETE HANDLERS ---
+  const handleDeleteDemoPlan = async (planId: number) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa Demo Plan này không?')) return;
+    
+    try {
+      // Call API to delete from database
+      await axios.delete(`/api/dca/demo/plan/${planId}`);
+    } catch (err) {
+      console.error('Failed to delete plan from database', err);
+    }
+    
+    // Remove from local state
+    setDemoPlans(plans => plans.filter(p => p.id !== planId));
+  };
+
+  const handleDeleteRealPlan = (planId: number) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa Plan này không?')) return;
+    setRealPlans(plans => plans.filter(p => p.id !== planId));
+  };
+
+  // --- TEST TRANSACTION HANDLER ---
+  const handleTestTransaction = async (plan: DCAPlan) => {
+    const currentPrice = 95000 + Math.random() * 2000;
+    const newTx = {
+      planId: plan.id,
+      price: currentPrice,
+      amountUSDT: plan.amount,
+      amountCoin: plan.amount / currentPrice,
+      date: new Date().toISOString(),
+      status: 'SUCCESS'
+    };
+
+    try {
+      // Save transaction to database
+      await axios.post('/api/dca/demo/transaction', newTx);
+    } catch (err) {
+      console.error('Failed to save transaction to database', err);
+    }
+
+    // Update local state
+    const txForState: Transaction = {
+      id: Date.now(),
+      date: new Date().toLocaleString(),
+      price: currentPrice,
+      amountUsdt: plan.amount,
+      amountCoin: plan.amount / currentPrice,
+      status: 'SUCCESS'
+    };
+
+    setDemoBalance(prev => prev - plan.amount);
+    setDemoPlans(plans => plans.map(p => p.id === plan.id ? {
+      ...p,
+      totalInvested: p.totalInvested + plan.amount,
+      currentValue: p.currentValue + plan.amount,
+      transactions: [txForState, ...p.transactions]
     } : p));
   };
 
@@ -390,7 +468,7 @@ export default function DCA() {
           }}
           className={`flex-1 py-2 text-xs font-bold rounded transition-all ${activeTab === 'DEMO' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
         >
-          🟣 DEMO
+          DEMO
         </button>
         <button
           onClick={() => {
@@ -399,7 +477,7 @@ export default function DCA() {
           }}
           className={`flex-1 py-2 text-xs font-bold rounded transition-all ${activeTab === 'REAL' ? 'bg-green-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
         >
-          🟢 REAL
+          REAL
         </button>
         <button
           onClick={() => {
@@ -408,7 +486,7 @@ export default function DCA() {
           }}
           className={`flex-1 py-2 text-xs font-bold rounded transition-all ${activeTab === 'BACKTEST' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
         >
-          🔵 BACKTEST
+          BACKTEST
         </button>
       </div>
 
@@ -649,25 +727,8 @@ export default function DCA() {
                               <p className="text-sm text-white font-bold font-mono">{formatMoney(plan.totalInvested)}</p>
                            </div>
                            <div className="flex gap-2">
-                             <button onClick={() => {
-                               const currentPrice = 95000 + Math.random() * 2000;
-                               const newTx = {
-                                 id: Date.now(),
-                                 date: new Date().toLocaleString(),
-                                 price: currentPrice,
-                                 amountUsdt: amount,
-                                 amountCoin: amount / currentPrice,
-                                 status: 'SUCCESS' as const
-                               };
-                               setDemoBalance(prev => prev - amount);
-                               setDemoPlans(plans => plans.map(p => p.id === plan.id ? {
-                                 ...p,
-                                 totalInvested: p.totalInvested + amount,
-                                 currentValue: p.currentValue + amount,
-                                 transactions: [newTx, ...p.transactions]
-                               } : p));
-                             }} className="text-[10px] bg-gray-800 border border-gray-600 px-3 py-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-700 transition">Test</button>
-                             <button className="text-[10px] bg-red-900/20 border border-red-800 px-3 py-1.5 rounded-full text-red-400 hover:bg-red-900/40"><FaTrash/></button>
+                             <button onClick={() => handleTestTransaction(plan)} className="text-[10px] bg-gray-800 border border-gray-600 px-3 py-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-700 transition">Test</button>
+                             <button onClick={() => handleDeleteDemoPlan(plan.id)} className="text-[10px] bg-red-900/20 border border-red-800 px-3 py-1.5 rounded-full text-red-400 hover:bg-red-900/40"><FaTrash/></button>
                            </div>
                         </div>
                       </div>
@@ -791,7 +852,7 @@ export default function DCA() {
                            </div>
                            <div className="flex gap-2">
                              <button onClick={() => mockRunTransaction(plan.id)} className="text-[10px] bg-gray-800 border border-gray-600 px-3 py-1.5 rounded-full text-gray-300 hover:text-white hover:bg-gray-700 transition">Test</button>
-                             <button className="text-[10px] bg-red-900/20 border border-red-800 px-3 py-1.5 rounded-full text-red-400 hover:bg-red-900/40"><FaTrash/></button>
+                             <button onClick={() => handleDeleteRealPlan(plan.id)} className="text-[10px] bg-red-900/20 border border-red-800 px-3 py-1.5 rounded-full text-red-400 hover:bg-red-900/40"><FaTrash/></button>
                            </div>
                         </div>
                       </div>
