@@ -125,57 +125,112 @@ export default function DCA() {
     }
   }, []);
 
+  // Helper function to calculate detailTime from plan data
+  const calculateDetailTime = (p: any): string => {
+    if (p.recurrence === 'DAILY') {
+      return `${p.targetHour || 0}:00 hàng ngày`;
+    } else if (p.recurrence === 'WEEKLY') {
+      const weekday = p.targetWeekday || 1;
+      const weekdayLabel = WEEKDAYS.find(w => w.val === weekday)?.label || `Thứ ${weekday + 1}`;
+      return `${weekdayLabel}, ${p.targetHour || 0}:00`;
+    } else if (p.recurrence === 'MONTHLY') {
+      return `Ngày ${p.targetDate || 1}, ${p.targetHour || 0}:00`;
+    }
+    return '';
+  };
+
+  // Helper function to format date from ISO string or LocalDateTime string
+  const formatDateFromISO = (dateString: string | null | undefined): string => {
+    if (!dateString) {
+      return new Date().toLocaleString('vi-VN');
+    }
+    try {
+      // Try parsing as ISO string first
+      let date = new Date(dateString);
+      // If invalid, try parsing as LocalDateTime format (e.g., "2025-01-15T10:30:00")
+      if (isNaN(date.getTime())) {
+        // Try to parse LocalDateTime format
+        date = new Date(dateString.replace(' ', 'T'));
+      }
+      if (isNaN(date.getTime())) {
+        return dateString; // Return original if still invalid
+      }
+      return date.toLocaleString('vi-VN');
+    } catch (e) {
+      console.error('Error formatting date:', dateString, e);
+      return dateString || new Date().toLocaleString('vi-VN');
+    }
+  };
+
   // Load Demo Plans from Database when tab is DEMO
+  const loadDemoPlansFromDB = async () => {
+    setLoadingDemoPlans(true);
+    try {
+      const userId = localStorage.getItem('userId') || 'demo_user';
+      const plansRes = await axios.get(`/api/dca/demo/plans/${userId}`);
+      if (plansRes.data && plansRes.data.length > 0) {
+        // Load all plans and their transactions
+        const dbPlans: DCAPlan[] = await Promise.all(plansRes.data.map(async (p: any) => {
+          // Load transactions for this plan
+          let transactions: Transaction[] = [];
+          try {
+            const txRes = await axios.get(`/api/dca/demo/transactions/${p.id}`);
+            if (txRes.data && Array.isArray(txRes.data) && txRes.data.length > 0) {
+              // Sort by date descending (newest first) - backend should already sort but ensure it
+              const sortedTxs = [...txRes.data].sort((a: any, b: any) => {
+                const dateA = new Date(a.date || 0).getTime();
+                const dateB = new Date(b.date || 0).getTime();
+                return dateB - dateA; // Descending order
+              });
+              
+              transactions = sortedTxs.map((t: any) => {
+                // Log để debug date
+                if (!t.date) {
+                  console.warn('Transaction missing date:', t);
+                }
+                return {
+                  id: t.id || `tx_${Date.now()}_${Math.random()}`,
+                  date: formatDateFromISO(t.date),
+                  price: t.price || 0,
+                  amountUsdt: t.amountUSDT || t.amountUsdt || 0,
+                  amountCoin: t.amountCoin || 0,
+                  status: (t.status || 'SUCCESS') as 'SUCCESS' | 'FAILED' | 'PENDING'
+                };
+              });
+            }
+          } catch (txErr) {
+            console.error('Failed to load transactions for plan', p.id, txErr);
+          }
+
+          return {
+            id: p.id,
+            symbol: p.symbol || '',
+            amount: p.amountUSD || 0,
+            frequency: p.recurrence || 'WEEKLY',
+            detailTime: calculateDetailTime(p),
+            nextRun: p.nextRun || '',
+            status: p.active ? 'RUNNING' : 'PAUSED',
+            accountName: p.username || 'Database Plan',
+            totalInvested: p.totalInvested || 0,
+            currentValue: p.currentValue || 0,
+            transactions
+          };
+        }));
+        setDemoPlans(dbPlans);
+      } else {
+        // If no plans, set empty array
+        setDemoPlans([]);
+      }
+    } catch (err) {
+      console.error('Failed to load demo plans from database', err);
+      setDemoPlans([]);
+    } finally {
+      setLoadingDemoPlans(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'DEMO') {
-      const loadDemoPlansFromDB = async () => {
-        setLoadingDemoPlans(true);
-        try {
-          const userId = localStorage.getItem('userId') || 'demo_user';
-          const plansRes = await axios.get(`/api/dca/demo/plans/${userId}`);
-          if (plansRes.data && plansRes.data.length > 0) {
-            // Load all plans and their transactions
-            const dbPlans: DCAPlan[] = await Promise.all(plansRes.data.map(async (p: any) => {
-              // Load transactions for this plan
-              let transactions: Transaction[] = [];
-              try {
-                const txRes = await axios.get(`/api/dca/demo/transactions/${p.id}`);
-                if (txRes.data && txRes.data.length > 0) {
-                  transactions = txRes.data.map((t: any) => ({
-                    id: t.id,
-                    date: t.date,
-                    price: t.price,
-                    amountUsdt: t.amountUSDT,
-                    amountCoin: t.amountCoin,
-                    status: t.status as 'SUCCESS' | 'FAILED' | 'PENDING'
-                  }));
-                }
-              } catch (txErr) {
-                console.error('Failed to load transactions for plan', p.id, txErr);
-              }
-
-              return {
-                id: p.id,
-                symbol: p.symbol,
-                amount: p.amountUSD,
-                frequency: p.recurrence,
-                detailTime: '',
-                nextRun: p.nextRun,
-                status: p.active ? 'RUNNING' : 'PAUSED',
-                accountName: 'Database Plan',
-                totalInvested: p.totalInvested || 0,
-                currentValue: p.currentValue || 0,
-                transactions
-              };
-            }));
-            setDemoPlans(dbPlans);
-          }
-        } catch (err) {
-          console.error('Failed to load demo plans from database', err);
-        } finally {
-          setLoadingDemoPlans(false);
-        }
-      };
       loadDemoPlansFromDB();
     }
   }, [activeTab]);
@@ -258,12 +313,12 @@ export default function DCA() {
     try {
       // Call API to delete from database
       await axios.delete(`/api/dca/demo/plan/${planId}`);
+      // Reload plans from database after deletion
+      await loadDemoPlansFromDB();
     } catch (err) {
       console.error('Failed to delete plan from database', err);
+      alert('❌ Lỗi khi xóa plan. Vui lòng thử lại!');
     }
-    
-    // Remove from local state
-    setDemoPlans(plans => plans.filter(p => p.id !== planId));
   };
 
   const handleDeleteRealPlan = (planId: number) => {
@@ -273,40 +328,77 @@ export default function DCA() {
 
   // --- TEST TRANSACTION HANDLER ---
   const handleTestTransaction = async (plan: DCAPlan) => {
+    if (demoBalance < plan.amount) {
+      alert("Số dư Demo không đủ!");
+      return;
+    }
+
     const currentPrice = 95000 + Math.random() * 2000;
+    const amountCoin = plan.amount / currentPrice;
+    
+    // Create transaction object for database
     const newTx = {
-      planId: plan.id,
+      planId: plan.id.toString(),
+      userId: localStorage.getItem('userId') || 'demo_user',
+      symbol: plan.symbol,
+      side: 'BUY',
       price: currentPrice,
       amountUSDT: plan.amount,
-      amountCoin: plan.amount / currentPrice,
+      amountCoin: amountCoin,
       date: new Date().toISOString(),
       status: 'SUCCESS'
     };
 
-    try {
-      // Save transaction to database
-      await axios.post('/api/dca/demo/transaction', newTx);
-    } catch (err) {
-      console.error('Failed to save transaction to database', err);
-    }
-
-    // Update local state
+    // Optimistic update: Update local state immediately
     const txForState: Transaction = {
       id: Date.now(),
-      date: new Date().toLocaleString(),
+      date: new Date().toLocaleString('vi-VN'),
       price: currentPrice,
       amountUsdt: plan.amount,
-      amountCoin: plan.amount / currentPrice,
+      amountCoin: amountCoin,
       status: 'SUCCESS'
     };
 
+    // Update local state immediately (optimistic update)
     setDemoBalance(prev => prev - plan.amount);
-    setDemoPlans(plans => plans.map(p => p.id === plan.id ? {
-      ...p,
-      totalInvested: p.totalInvested + plan.amount,
-      currentValue: p.currentValue + plan.amount,
-      transactions: [txForState, ...p.transactions]
-    } : p));
+    setDemoPlans(plans => plans.map(p => {
+      if (p.id === plan.id) {
+        return {
+          ...p,
+          totalInvested: (p.totalInvested || 0) + plan.amount,
+          currentValue: (p.currentValue || 0) + plan.amount,
+          transactions: [txForState, ...(p.transactions || [])]
+        };
+      }
+      return p;
+    }));
+
+    try {
+      // Save transaction to database (backend will update plan stats automatically)
+      await axios.post('/api/dca/demo/transaction', newTx);
+      
+      // Reload plans from database after a short delay to ensure data is saved and synced
+      // This ensures transactions are loaded from database with correct IDs
+      setTimeout(async () => {
+        await loadDemoPlansFromDB();
+      }, 300);
+    } catch (err) {
+      console.error('Failed to save transaction to database', err);
+      // Revert optimistic update on error
+      setDemoBalance(prev => prev + plan.amount);
+      setDemoPlans(plans => plans.map(p => {
+        if (p.id === plan.id) {
+          return {
+            ...p,
+            totalInvested: (p.totalInvested || 0) - plan.amount,
+            currentValue: (p.currentValue || 0) - plan.amount,
+            transactions: (p.transactions || []).filter(tx => tx.id !== txForState.id)
+          };
+        }
+        return p;
+      }));
+      alert('❌ Lỗi khi lưu giao dịch. Vui lòng thử lại!');
+    }
   };
 
   const fetchAllHistoricalData = async (symbol: string, startTime: number, endTime: number) => {
@@ -631,21 +723,8 @@ export default function DCA() {
                         const res = await axios.post('/api/dca/demo/plan', newPlan);
                         if (res.data && res.data.id) {
                           alert("✅ Đã tạo Demo Plan thành công! Dữ liệu đã lưu vào Database.");
-                          // Refresh danh sách
-                          const plansRes = await axios.get(`/api/dca/demo/plans/${newPlan.userId}`);
-                          setDemoPlans(plansRes.data.map((p: any) => ({
-                            id: p.id,
-                            symbol: p.symbol,
-                            amount: p.amountUSD,
-                            frequency: p.recurrence,
-                            detailTime: timeDetail,
-                            nextRun: p.nextRun,
-                            status: p.active ? 'RUNNING' : 'PAUSED',
-                            accountName: 'Database Plan',
-                            totalInvested: p.totalInvested || 0,
-                            currentValue: p.currentValue || 0,
-                            transactions: []
-                          })));
+                          // Reload plans from database to get all data including transactions
+                          await loadDemoPlansFromDB();
                           setActiveTab('DEMO');
                           setSearchParams({ tab: 'DEMO' });
                         }
