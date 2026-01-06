@@ -429,7 +429,8 @@ export default function DCA() {
     const valueData = backtestResult.history.map(h => ({ time: h.time as Time, value: h.value }));
     const investedData = backtestResult.history.map(h => ({ time: h.time as Time, value: h.invested }));
 
-    if (valueData.length > 0) {
+    if (valueData
+      .length > 0) {
         valueSeries.setData(valueData);
         investedSeries.setData(investedData);
         chart.timeScale().fitContent();
